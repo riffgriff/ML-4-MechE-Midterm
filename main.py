@@ -1,5 +1,8 @@
+from dataclasses import dataclass
+
 import matplotlib.pyplot as plt
 import numpy as np
+
 from ucimlrepo import fetch_ucirepo
 from student_support import load_project
 
@@ -47,6 +50,46 @@ def standardize(X):
     return Z, X_mean, X_std
 
 
+@dataclass
+class Configuration:
+    angle: float # 2nd data point
+    chord_l: float # 3rd data point
+    velocity: float # 4th data point
+    displacement_t: float # 5th data point
+    data_indices: list[int]
+
+    def is_member(self, numpy_col):
+        if (self.angle == numpy_col[1] and
+            self.chord_l == numpy_col[2] and
+            self.velocity == numpy_col[3] and
+            self.displacement_t == numpy_col[4]):
+            return True
+        else:
+            return False
+
+
+def pull_configurations(X):
+    # find which data points all belong to a single configuration
+    # returns a list of Configuration dataclasses
+
+    configurations = []
+
+    for i, column in enumerate(X.T):
+        # check if the configuration already exists
+        config_found = False
+        for config in configurations:
+            if config.is_member(column):
+                config.data_indices.append(i)
+                config_found = True
+                break
+
+        if not config_found:
+            new_config = Configuration(column[1], column[2], column[3], column[4], [i])
+            configurations.append(new_config)
+
+    return configurations
+
+
 ###   MAIN   ###
 
 # do economy SVD
@@ -70,9 +113,24 @@ fig2.canvas.manager.set_window_title("SVD Scatter")
 sc = ax2.scatter(Y_2[0, :], Y_2[1, :], c=b.flatten(), cmap="viridis", s=15)
 cbar = fig2.colorbar(sc, ax=ax2)
 cbar.set_label("Scaled sound pressure level (dB)")
-ax2.set_xlabel("PC 1")
-ax2.set_ylabel("PC 2")
-ax2.set_title("First Two SVD Dimensions")
+ax2.set_xlabel("Mode 1")
+ax2.set_ylabel("Mode 2")
+ax2.set_title("First Two SVD Modes")
+
+# do it again for 3 SVD dims
+U_3 = U[:, :3]
+Y_3 = U_3.T @ X
+
+fig3 = plt.figure()
+fig3.canvas.manager.set_window_title("SVD Scatter 3D")
+ax3 = fig3.add_subplot(projection="3d")
+sc2 = ax3.scatter(Y_3[0, :], Y_3[1, :], Y_3[2, :], c=b.flatten(), cmap="viridis", s=15)
+cbar3 = fig3.colorbar(sc2, ax=ax3, pad=0.1)
+cbar3.set_label("Scaled sound pressure level (dB)")
+ax3.set_xlabel("Mode 1")
+ax3.set_ylabel("Mode 2")
+ax3.set_zlabel("Mode 3")
+ax3.set_title("First Three SVD Modes")
 
 # plot cumulative energy
 fig1, ax1 = plt.subplots()
