@@ -3,29 +3,11 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ucimlrepo import fetch_ucirepo
 from student_support import load_project
 
 ###   helper functions   ###
 
-def pull_dataset_uci_repo():
-    # fetch dataset from the UCI ML repo - unnecessary with local data
-    airfoil_self_noise = fetch_ucirepo(id=291)
-
-    # data (as pandas dataframes)
-    X_pandas = airfoil_self_noise.data.features
-    b_pandas = airfoil_self_noise.data.targets
-
-    # data comes in with rows/columns swapped from expectations
-    X = X_pandas.to_numpy().transpose()
-    b = b_pandas.to_numpy().transpose()
-
-    X_labels = X_pandas.columns
-
-    return X, b, X_labels
-
-
-def pull_dataset_local():
+def pull_dataset():
     # pull dataset from the student support file
     # returns X,b,encoded,metadata
     """
@@ -56,7 +38,7 @@ class Configuration:
     chord_l: float # 3rd data point
     velocity: float # 4th data point
     displacement_t: float # 5th data point
-    data_indices: list[int]
+    data_indices: list[int] # list of the indices of data that are a part of this configuration
 
     def is_member(self, numpy_col):
         if (self.angle == numpy_col[1] and
@@ -93,53 +75,22 @@ def pull_configurations(X):
 ###   MAIN   ###
 
 # do economy SVD
-X, b, encoded, metadata = pull_dataset_local()
-# Z, x_mean, x_std = standardize(X)
-U, S, Vt = np.linalg.svd(X, full_matrices=False) # switch to Z for PCA
+X, b, encoded, metadata = pull_dataset()
+Z, x_mean, x_std = standardize(X)
+U_X, S_X, Vt_X = np.linalg.svd(X, full_matrices=False)
+U_Z, S_Z, Vt_Z = np.linalg.svd(Z, full_matrices=False) # technically PCA but whatever
 m, n = X.shape
 
-# find the energy
-energy = S**2
-total_energy = np.sum(energy)
-cumulative_energy = np.cumsum(energy) / total_energy * 100
+# find singularity cutoff, rank, and condition number
+eps_mach = np.finfo(float).eps # machine tolerance for numpy operations
+tau_X = eps_mach*max([m,n])*S_X[0]
+tau_Z = eps_mach*max([m,n])*S_Z[0]
+r_X = int((S_X > tau_X).sum())
+r_Z = int((S_Z > tau_Z).sum())
+c_X = S_X[0]/S_X[r_X-1]
+c_Z = S_Z[0]/S_Z[r_Z-1]
+print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
+      f"Rank X: {r_X}\nRank Z: {r_Z}\n\n"+
+      f"Cond X: {c_X}\nCond Z: {c_Z}\n")
 
-# have labels associated with the 2 largest SVD dims
-U_2 = U[:, :2]
-Y_2 = U_2.T @ X
 
-# plot 2-D SVD
-fig2, ax2 = plt.subplots()
-fig2.canvas.manager.set_window_title("SVD Scatter")
-sc = ax2.scatter(Y_2[0, :], Y_2[1, :], c=b.flatten(), cmap="viridis", s=15)
-cbar = fig2.colorbar(sc, ax=ax2)
-cbar.set_label("Scaled sound pressure level (dB)")
-ax2.set_xlabel("Mode 1")
-ax2.set_ylabel("Mode 2")
-ax2.set_title("First Two SVD Modes")
-
-# do it again for 3 SVD dims
-U_3 = U[:, :3]
-Y_3 = U_3.T @ X
-
-fig3 = plt.figure()
-fig3.canvas.manager.set_window_title("SVD Scatter 3D")
-ax3 = fig3.add_subplot(projection="3d")
-sc2 = ax3.scatter(Y_3[0, :], Y_3[1, :], Y_3[2, :], c=b.flatten(), cmap="viridis", s=15)
-cbar3 = fig3.colorbar(sc2, ax=ax3, pad=0.1)
-cbar3.set_label("Scaled sound pressure level (dB)")
-ax3.set_xlabel("Mode 1")
-ax3.set_ylabel("Mode 2")
-ax3.set_zlabel("Mode 3")
-ax3.set_title("First Three SVD Modes")
-
-# plot cumulative energy
-fig1, ax1 = plt.subplots()
-fig1.canvas.manager.set_window_title("Scree Plot")
-yrange = range(1, m+1)
-ax1.plot(yrange, cumulative_energy)
-ax1.set_xlabel("Component")
-ax1.set_ylabel("Cumulative Energy (%)")
-ax1.set_title("Cumulative Energy")
-plt.xticks(yrange) # makes all x-axis ticks integers in this range - beware for other plots
-
-plt.show()
