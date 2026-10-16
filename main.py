@@ -81,6 +81,8 @@ U_X, S_X, Vt_X = np.linalg.svd(X, full_matrices=False)
 U_Z, S_Z, Vt_Z = np.linalg.svd(Z, full_matrices=False) # technically PCA but whatever
 m, n = X.shape
 
+print(f"m: {m}, n: {n}")
+
 # find singularity cutoff, rank, and condition number
 eps_mach = np.finfo(float).eps # machine tolerance for numpy operations
 tau_X = eps_mach*max([m,n])*S_X[0]
@@ -92,5 +94,3 @@ c_Z = S_Z[0]/S_Z[r_Z-1]
 print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
       f"Rank X: {r_X}\nRank Z: {r_Z}\n\n"+
       f"Cond X: {c_X}\nCond Z: {c_Z}\n")
-
-
