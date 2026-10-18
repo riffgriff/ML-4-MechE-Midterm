@@ -95,6 +95,25 @@ print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
       f"Rank X: {r_X}\nRank Z: {r_Z}\n\n"+
       f"Cond X: {c_X}\nCond Z: {c_Z}\n")
 
-# Compute eigenvalues from SVD
+# Cumulative retained variance calculations
 eigenvalues = S_Z**2/(n - 1)
 print(f"\nEigenvalues: {eigenvalues}")
+cumulative_variance = 100*np.cumsum(eigenvalues)/np.sum(eigenvalues)
+
+#Compute k=number of components needed to reach 90% energy
+k = np.argmax(cumulative_variance >= 90) + 1
+print(f"\nNumber of components needed to reach 90% energy: {k}")
+
+#Cumulative variance plot
+plt.figure(figsize=(8, 4))
+plt.plot(range(1, len(cumulative_variance) + 1), cumulative_variance, color='b',
+linewidth=2)
+plt.axhline(y=90, color='r', linestyle='--', label='90% Variance Threshold')
+plt.title("Cumulative Variance Plot")
+plt.xlabel("Number of Principal Components")
+plt.ylabel("Cumulative Variance Retained (%)")
+plt.legend(loc='lower right')
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.show()
+
