@@ -117,3 +117,9 @@ plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
 plt.show()
 
+#Reconstruction Error Calculation
+U_k= U_Z[:, :k]
+Y_k = U_k.T @ Z
+Z_k = U_k @ Y_k
+reconstruction_error = np.sum(eigenvalues[k:])/np.sum(eigenvalues)
+print(f"\nRelative squared reconstruction error: {reconstruction_error:.6f}")
