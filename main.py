@@ -94,3 +94,7 @@ c_Z = S_Z[0]/S_Z[r_Z-1]
 print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
       f"Rank X: {r_X}\nRank Z: {r_Z}\n\n"+
       f"Cond X: {c_X}\nCond Z: {c_Z}\n")
+
+# Compute eigenvalues from SVD
+eigenvalues = S_Z**2/(n - 1)
+print(f"\nEigenvalues: {eigenvalues}")
