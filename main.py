@@ -79,7 +79,7 @@ X, b, encoded, metadata = pull_dataset()
 Z, x_mean, x_std = standardize(X)
 U_X, S_X, Vt_X = np.linalg.svd(X, full_matrices=False)
 U_Z, S_Z, Vt_Z = np.linalg.svd(Z, full_matrices=False) # technically PCA but whatever
-m, n = X.shape
+n, m = X.shape
 
 print(f"m: {m}, n: {n}")
 
@@ -96,7 +96,7 @@ print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
       f"Cond X: {c_X}\nCond Z: {c_Z}\n")
 
 # Cumulative retained variance calculations
-eigenvalues = S_Z**2/(n - 1)
+eigenvalues = S_Z**2/(m - 1)
 print(f"\nEigenvalues: {eigenvalues}")
 cumulative_variance = 100*np.cumsum(eigenvalues)/np.sum(eigenvalues)
 
