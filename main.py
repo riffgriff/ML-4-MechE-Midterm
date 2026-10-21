@@ -123,3 +123,128 @@ Y_k = U_k.T @ Z
 Z_k = U_k @ Y_k
 reconstruction_error = np.sum(eigenvalues[k:])/np.sum(eigenvalues)
 print(f"\nRelative squared reconstruction error: {reconstruction_error:.6f}")
+
+### PROBLEM 3: ORDINARY LEAST SQUARES ###
+
+X_ols, b_ols, encoded_ols, metadata_ols = pull_dataset()
+b_ols = b_ols.ravel()
+
+dev_idx = np.array(metadata_ols["development"], dtype=int)
+test_idx = np.array(metadata_ols["test"], dtype=int)
+
+def rmse(y_true, y_pred):
+    return np.sqrt(np.mean((y_pred - y_true)**2))
+
+def standardize_train_eval(X_train, X_eval):
+    mu = X_train.mean(axis=0)
+    scale = X_train.std(axis=0, ddof=1)
+    scale[scale == 0] = 1.0
+    return (X_train - mu) / scale, (X_eval - mu) / scale, mu, scale
+
+
+# 3A. Five-fold grouped cross-validation
+ols_sse = baseline_sse = 0.0
+validation_n = 0
+
+print("\n--- Problem 3: Ordinary Least Squares ---")
+
+for fold_number, fold in enumerate(metadata_ols["folds"], start=1):
+    train_idx = np.array(fold["train"], dtype=int)
+    val_idx = np.array(fold["validation"], dtype=int)
+
+    X_train, X_val = encoded_ols[train_idx], encoded_ols[val_idx]
+    b_train, b_val = b_ols[train_idx], b_ols[val_idx]
+
+    Z_train, Z_val, _, _ = standardize_train_eval(X_train, X_val)
+
+    A_train = np.column_stack((Z_train, np.ones(len(train_idx))))
+    A_val = np.column_stack((Z_val, np.ones(len(val_idx))))
+
+    beta_ols = np.linalg.pinv(A_train) @ b_train
+    pred_val_ols = A_val @ beta_ols
+    pred_val_baseline = np.full(len(val_idx), b_train.mean())
+
+    ols_sse += np.sum((pred_val_ols - b_val)**2)
+    baseline_sse += np.sum((pred_val_baseline - b_val)**2)
+    validation_n += len(val_idx)
+
+    print(
+        f"Fold {fold_number}: "
+        f"OLS RMSE = {rmse(b_val, pred_val_ols):.4f} dB | "
+        f"Baseline RMSE = {rmse(b_val, pred_val_baseline):.4f} dB"
+    )
+
+ols_validation_rmse = np.sqrt(ols_sse / validation_n)
+baseline_validation_rmse = np.sqrt(baseline_sse / validation_n)
+
+
+# 3B. Final fit using all development data
+X_dev, X_test = encoded_ols[dev_idx], encoded_ols[test_idx]
+b_dev, b_test = b_ols[dev_idx], b_ols[test_idx]
+
+Z_dev, Z_test, mu_dev, scale_dev = standardize_train_eval(X_dev, X_test)
+
+A_dev = np.column_stack((Z_dev, np.ones(len(dev_idx))))
+A_test = np.column_stack((Z_test, np.ones(len(test_idx))))
+
+# Numerical rank
+s_A = np.linalg.svd(A_dev, compute_uv=False)
+tau_A = np.finfo(float).eps * max(A_dev.shape) * s_A[0]
+rank_A = int(np.sum(s_A > tau_A))
+
+# Final OLS model
+beta_final_ols = np.linalg.pinv(A_dev) @ b_dev
+pred_dev_ols = A_dev @ beta_final_ols
+pred_test_ols = A_test @ beta_final_ols
+
+# Baseline
+baseline_value = b_dev.mean()
+pred_dev_baseline = np.full(len(dev_idx), baseline_value)
+pred_test_baseline = np.full(len(test_idx), baseline_value)
+
+# RMSE
+ols_training_rmse = rmse(b_dev, pred_dev_ols)
+ols_test_rmse = rmse(b_test, pred_test_ols)
+baseline_training_rmse = rmse(b_dev, pred_dev_baseline)
+baseline_test_rmse = rmse(b_test, pred_test_baseline)
+
+
+# Results
+print(f"\nA dimensions: {A_dev.shape}")
+print(f"Numerical rank of A: {rank_A}")
+print("Feature order: [frequency, angle, chord, velocity, displacement thickness, intercept]")
+print("OLS coefficients:", beta_final_ols)
+
+print("\nRMSE comparison (dB):")
+print(f"{'Model':<12}{'Training':>12}{'Validation':>15}{'Test':>12}")
+print(f"{'Baseline':<12}{baseline_training_rmse:>12.4f}{baseline_validation_rmse:>15.4f}{baseline_test_rmse:>12.4f}")
+print(f"{'OLS':<12}{ols_training_rmse:>12.4f}{ols_validation_rmse:>15.4f}{ols_test_rmse:>12.4f}")
+
+
+# 3C. Diagnostic plots
+residuals_test = pred_test_ols - b_test
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+axes[0].scatter(b_test, pred_test_ols, alpha=0.6)
+plot_min = min(b_test.min(), pred_test_ols.min())
+plot_max = max(b_test.max(), pred_test_ols.max())
+axes[0].plot([plot_min, plot_max], [plot_min, plot_max], linestyle="--")
+axes[0].set(
+    xlabel="Observed sound pressure level (dB)",
+    ylabel="Predicted sound pressure level (dB)",
+    title="OLS: Observed vs Predicted"
+)
+axes[0].grid(True, alpha=0.3)
+
+axes[1].scatter(pred_test_ols, residuals_test, alpha=0.6)
+axes[1].axhline(0, linestyle="--")
+axes[1].set(
+    xlabel="Predicted sound pressure level (dB)",
+    ylabel="Residual: predicted - observed (dB)",
+    title="OLS: Residual vs Predicted"
+)
+axes[1].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
