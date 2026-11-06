@@ -282,3 +282,106 @@ plt.grid(True, linestyle='--', alpha=0.6)
 
 plt.tight_layout()
 plt.show()
+
+
+### PROBLEM 4: RIDGE REGRESSION ###
+
+def fit_ridge(A, b, lam):
+    # Calculates the regression coefficients :
+    # A: design matrix, contains input variables and intercept column.
+    # b: vector of measured sound pressure levels
+    # lam: regularization parameter (lambda)
+    m, p = A.shape
+
+    if lam == 0:    # Calculates the case for lambda = 0 so it's basically Ordinary Least Squares (OLS)
+        rcond = np.finfo(float).eps * max(A.shape)
+        return np.linalg.pinv(A, rcond=rcond) @ b
+
+    gamma = np.eye(p)   #Id matrix
+    gamma[-1, -1] = 0   # Removes bottom right "1", this way the intercept isn't penalized
+
+    M = A.T @ A + m * lam * (gamma.T @ gamma) #solves the linear system M*beta=A^t*b
+    return np.linalg.solve(M, A.T @ b)
+
+
+# 4A. Select lambda using grouped cross-validation
+
+lambdas = np.concatenate(([0.0], np.logspace(-6, 6, 49))) #Test 50 values of lambda, logspace to cover larger span of lambda without too many values
+
+best_lambda = None
+best_cv_rmse = np.inf
+
+for lam in lambdas:
+    total_sse = 0.0
+    total_count = 0
+
+    for fold in metadata["folds"]:      #Goes over all folds within the datasets
+        train_idx = np.array(fold["train"], dtype=int)
+        val_idx = np.array(fold["validation"], dtype=int)
+
+        X_train = encoded[train_idx]
+        X_val = encoded[val_idx]
+        b_train = b_flat[train_idx]
+        b_val = b_flat[val_idx]
+
+        # encoded: all encoded input features in the development dataset.
+        # b_flat: corresponding measured sound pressure levels.
+        # train_idx: indices of training observations.
+        # val_idx: indices of validation observations.
+
+        # Training-only standardization
+        A_train, A_val, _, _ = build_design_matrix(X_train, X_val)
+
+        #standardizes the features using the training dataset's mean and standard deviation:
+
+        beta = fit_ridge(A_train, b_train, lam)
+        predictions = A_val @ beta
+
+        # calculates Ridge coefficients using training observations.
+        # Predicts the validation observations:
+        # b_val_hat = A_val*beta_hat
+        # Validation observations NOT USED to calculate Beta, ONLY model
+
+        total_sse += np.sum((predictions - b_val)**2)
+        total_count += len(b_val)
+
+    cv_rmse = np.sqrt(total_sse / total_count)
+
+    # Calculates Root Mean Square
+
+    if cv_rmse < best_cv_rmse:
+        best_cv_rmse = cv_rmse
+        best_lambda = lam
+
+    # If error from new lambda lower than previous highscorer lambda -> new lambda selected
+
+# 4B. Refit on all development data
+
+beta_ridge = fit_ridge(A_dev, b_dev, best_lambda) # Use whole dataset as training now that best lambda was found
+
+ridge_train_pred = A_dev @ beta_ridge # Run ridge reg on training sets
+ridge_test_pred = A_test @ beta_ridge # Run ridge reg on test sets
+
+ridge_train_rmse = calc_rmse(b_dev, ridge_train_pred) # Test RMSE value for training data
+ridge_test_rmse = calc_rmse(b_test, ridge_test_pred)  # Test RMSE value for testing data
+
+
+# 4C. Compare with OLS and baseline
+
+print("Part 4: Ridge Regression")
+print(f"Selected lambda: {best_lambda:.6g}") # prints lambdas with six best digits
+
+print(f"\n{'Model':<12}{'Training':>12}{'Validation':>14}{'Test':>12}")
+print("-" * 50)
+
+for name, train, val, test in [
+    ("Baseline", base_train_rmse, base_cv_rmse, base_test_rmse),
+    ("OLS", ols_train_rmse, ols_cv_rmse, ols_test_rmse),
+    ("Ridge", ridge_train_rmse, best_cv_rmse, ridge_test_rmse)
+]:
+    print(f"{name:<12}{train:>12.4f}{val:>14.4f}{test:>12.4f}")
+
+difference = ols_test_rmse - ridge_test_rmse #CALCULATES THE DIFFERENCE IN PERFORMANCE
+
+print(f"\nOLS test RMSE - Ridge test RMSE: {difference:.4f} dB")
+
