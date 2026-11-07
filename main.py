@@ -74,13 +74,38 @@ def pull_configurations(X):
 
 ###   MAIN   ###
 
+import os
+FIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "figures")
+os.makedirs(FIG_DIR, exist_ok=True)
+
+X_full, b, encoded, metadata = pull_dataset()
+
+# Optional source-data check (handout p. 5): compare the loader's X and b with
+# the original UCI file airfoil_self_noise.dat (no header; columns = 5 inputs
+# followed by the response). Place the file in data/ to run the comparison.
+SOURCE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "airfoil_self_noise.dat")
+if os.path.exists(SOURCE_FILE):
+    source = np.loadtxt(SOURCE_FILE)
+    X_check, b_check = source[:, :5].T, source[:, 5].reshape(-1, 1)
+    print(f"Source file shape: {source.shape}; nonfinite values: {(~np.isfinite(source)).sum()}")
+    print(f"X shapes equal: {X_check.shape == X_full.shape}, "
+          f"X match: {X_check.shape == X_full.shape and np.allclose(X_check, X_full, rtol=1e-10, atol=1e-10)}")
+    print(f"b shapes equal: {b_check.shape == b.shape}, "
+          f"b match: {b_check.shape == b.shape and np.allclose(b_check, b, rtol=1e-10, atol=1e-10)}")
+else:
+    print(f"Source-data check skipped: {SOURCE_FILE} not found")
+
+# Problems 1-2 use development observations only (handout p. 7 and Group 2 checklist item 5)
+dev_idx = np.array(metadata["development"], dtype=int)
+X = X_full[:, dev_idx]
+
 # do economy SVD
-X, b, encoded, metadata = pull_dataset()
 Z, x_mean, x_std = standardize(X)
 U_X, S_X, Vt_X = np.linalg.svd(X, full_matrices=False)
 U_Z, S_Z, Vt_Z = np.linalg.svd(Z, full_matrices=False) # technically PCA but whatever
 n, m = X.shape
 
+print(f"Descriptive SVD/PCA on development data: X is {n} x {m} (n x m)")
 print(f"m: {m}, n: {n}")
 
 # find singularity cutoff, rank, and condition number
@@ -95,6 +120,27 @@ print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
       f"Rank X: {r_X}\nRank Z: {r_Z}\n\n"+
       f"Cond X: {c_X}\nCond Z: {c_Z}\n")
 
+input_names = list(metadata["names"])
+print(f"Singular values of X: {S_X}")
+print(f"Singular values of Z: {S_Z}")
+print("First left singular vector of X (u_1): " +
+      ", ".join(f"{nm}={v:+.4e}" for nm, v in zip(input_names, U_X[:, 0])))
+
+# Engineering question 1: smallest-singular-value direction of Z (handout p. 8 and p. 11 hint)
+# u_n^T z_i = sum_j u_jn (X_ji - mu_j)/s_j ; since u_n^T Z = sigma_n v_n^T,
+# its sample standard deviation over observations is sigma_n / sqrt(m-1)
+u_n = U_Z[:, -1]
+weak_sum = u_n @ Z
+print(f"\nSmallest singular value of Z: sigma_n = {S_Z[-1]:.4f}")
+print("Smallest-singular-value direction u_n: " +
+      ", ".join(f"{nm}={v:+.4f}" for nm, v in zip(input_names, u_n)))
+print(f"u_n^T z_i over development observations: mean = {weak_sum.mean():.2e}, "
+      f"std = {weak_sum.std(ddof=1):.4f} (each standardized input has std 1), "
+      f"sigma_n/sqrt(m-1) = {S_Z[-1]/np.sqrt(m-1):.4f}")
+corr = (Z @ Z.T) / (m - 1)
+print("Correlation matrix R of the development inputs:")
+print(np.array2string(corr, precision=3, suppress_small=True))
+
 # Cumulative retained variance calculations
 eigenvalues = S_Z**2/(m - 1)
 print(f"\nEigenvalues: {eigenvalues}")
@@ -107,14 +153,17 @@ print(f"\nNumber of components needed to reach 90% energy: {k}")
 #Cumulative variance plot
 plt.figure(figsize=(8, 4))
 plt.plot(range(1, len(cumulative_variance) + 1), cumulative_variance, color='b',
-linewidth=2)
+linewidth=2, marker='o')
+plt.xticks(range(1, len(cumulative_variance) + 1))
 plt.axhline(y=90, color='r', linestyle='--', label='90% Variance Threshold')
-plt.title("Cumulative Variance Plot")
+plt.title("Cumulative retained variance (development data, standardized inputs)")
 plt.xlabel("Number of Principal Components")
 plt.ylabel("Cumulative Variance Retained (%)")
 plt.legend(loc='lower right')
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
+plt.savefig(os.path.join(FIG_DIR, "cumulative_variance.pdf"))
+plt.savefig(os.path.join(FIG_DIR, "cumulative_variance.png"), dpi=200)
 plt.show()
 
 #Reconstruction Error Calculation
@@ -122,7 +171,11 @@ U_k= U_Z[:, :k]
 Y_k = U_k.T @ Z
 Z_k = U_k @ Y_k
 reconstruction_error = np.sum(eigenvalues[k:])/np.sum(eigenvalues)
+print(f"\nCumulative retained variance (%): {np.round(cumulative_variance, 2)}")
 print(f"\nRelative squared reconstruction error: {reconstruction_error:.6f}")
+# direct check from the reconstructed matrix: ||Z - Z_k||_F^2 / ||Z||_F^2
+direct_error = np.linalg.norm(Z - Z_k, 'fro')**2 / np.linalg.norm(Z, 'fro')**2
+print(f"Direct check ||Z - Z_k||_F^2 / ||Z||_F^2: {direct_error:.6f}")
 
 ### PROBLEM 3: ORDINARY LEAST SQUARES ###
 
@@ -156,11 +209,10 @@ print("\n--- Problem 3: Ordinary Least Squares ---")
 
 # extract zero-based development and held-out test indices
 b_flat = b.ravel()
-dev_idx = np.array(metadata["development"], dtype=int)
 test_idx = np.array(metadata["test"], dtype=int)
 
 # count configurations and observations per partition using pull_configurations
-all_configs = pull_configurations(X)
+all_configs = pull_configurations(X_full)
 dev_set = set(dev_idx)
 test_set = set(test_idx)
 n_configs_dev = sum(1 for cfg in all_configs if set(cfg.data_indices).issubset(dev_set))
@@ -233,9 +285,7 @@ base_train_rmse = calc_rmse(b_dev, b_hat_dev_base)
 base_test_rmse = calc_rmse(b_test, b_hat_test_base)
 
 # print design matrix diagnostics and fitted coefficients
-feature_names = list(metadata.get("input_names", [
-    "frequency", "angle", "chord_length", "velocity", "displacement_thickness"
-])) + ["intercept"]
+feature_names = list(metadata["names"]) + ["intercept"]
 
 print(f"\nDesign Matrix A_dev dimensions (m x p): {A_dev.shape}")
 print(f"tau_A: {tau_A:.6e}")
@@ -281,6 +331,45 @@ plt.legend(loc='upper left')
 plt.grid(True, linestyle='--', alpha=0.6)
 
 plt.tight_layout()
+plt.savefig(os.path.join(FIG_DIR, "ols_diagnostics.pdf"))
+plt.savefig(os.path.join(FIG_DIR, "ols_diagnostics.png"), dpi=200)
+plt.show()
+
+# 3D. Residual trends with frequency and angle of attack (supports the Group 2 closing statement)
+freq_test = X_full[0, test_idx]
+angle_test = X_full[1, test_idx]
+print(f"\nTest residual summary: mean = {residuals_test.mean():.4f} dB, std = {residuals_test.std(ddof=1):.4f} dB")
+print("Mean OLS test residual (predicted - observed) by frequency band:")
+for lo, hi in [(0, 1000), (1000, 3000), (3000, 8000), (8000, 25000)]:
+    sel = (freq_test >= lo) & (freq_test < hi)
+    if sel.any():
+        print(f"  {lo:>5}-{hi:<5} Hz: n = {sel.sum():>3}, mean = {residuals_test[sel].mean():+.3f} dB, "
+              f"RMSE = {np.sqrt(np.mean(residuals_test[sel]**2)):.3f} dB")
+print("Mean OLS test residual by angle of attack band:")
+for lo, hi in [(0, 5), (5, 10), (10, 25)]:
+    sel = (angle_test >= lo) & (angle_test < hi)
+    if sel.any():
+        print(f"  {lo:>2}-{hi:<2} deg: n = {sel.sum():>3}, mean = {residuals_test[sel].mean():+.3f} dB, "
+              f"RMSE = {np.sqrt(np.mean(residuals_test[sel]**2)):.3f} dB")
+
+plt.figure(figsize=(12, 4.5))
+plt.subplot(1, 2, 1)
+plt.scatter(freq_test, residuals_test, color='b', alpha=0.6)
+plt.xscale('log')
+plt.axhline(y=0, color='r', linestyle='--', linewidth=2)
+plt.xlabel("Frequency (Hz, log scale)")
+plt.ylabel("Residual: Predicted - Observed (dB)")
+plt.title("OLS test residuals vs. frequency")
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.subplot(1, 2, 2)
+plt.scatter(angle_test, residuals_test, color='b', alpha=0.6)
+plt.axhline(y=0, color='r', linestyle='--', linewidth=2)
+plt.xlabel("Angle of attack (deg)")
+plt.ylabel("Residual: Predicted - Observed (dB)")
+plt.title("OLS test residuals vs. angle of attack")
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.savefig(os.path.join(FIG_DIR, "residuals_vs_inputs.png"), dpi=200)
 plt.show()
 
 
