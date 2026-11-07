@@ -1,0 +1,88 @@
+Source file shape: (1503, 6); nonfinite values: 0
+X shapes equal: True, X match: True
+b shapes equal: True, b match: True
+Descriptive SVD/PCA on development data: X is 5 x 1195 (n x m)
+m: 1195, n: 5
+
+tau_X: 3.807636960250526e-08
+tau_Z: 1.3447898766215835e-11
+
+Rank X: 5
+Rank Z: 5
+
+Cond X: 530064.2426157604
+Cond Z: 3.6827238073935042
+
+Singular values of X: [1.43498514e+05 1.37154309e+03 2.04586884e+02 3.43709467e+00
+ 2.70719098e-01]
+Singular values of Z: [50.68113127 36.99489225 32.63833131 27.8953653  13.76186049]
+First left singular vector of X (u_1): frequency=-9.9996e-01, angle=-8.4698e-04, chord=-2.2610e-05, velocity=-8.6295e-03, displacement thickness=-1.2979e-06
+
+Smallest singular value of Z: sigma_n = 13.7619
+Smallest-singular-value direction u_n: frequency=-0.0905, angle=-0.7534, chord=-0.3018, velocity=+0.0828, displacement thickness=+0.5712
+u_n^T z_i over development observations: mean = -5.87e-15, std = 0.3983 (each standardized input has std 1), sigma_n/sqrt(m-1) = 0.3983
+Correlation matrix R of the development inputs:
+[[ 1.    -0.255 -0.02   0.118 -0.231]
+ [-0.255  1.    -0.534  0.114  0.771]
+ [-0.02  -0.534  1.    -0.05  -0.256]
+ [ 0.118  0.114 -0.05   1.     0.02 ]
+ [-0.231  0.771 -0.256  0.02   1.   ]]
+
+Eigenvalues: [2.15123707 1.14624963 0.89217812 0.65171809 0.15861709]
+
+Number of components needed to reach 90% energy: 4
+
+Cumulative retained variance (%): [ 43.02  65.95  83.79  96.83 100.  ]
+
+Relative squared reconstruction error: 0.031723
+Direct check ||Z - Z_k||_F^2 / ||Z||_F^2: 0.031723
+
+--- Problem 3: Ordinary Least Squares ---
+Development partition: 1195 observations across 84 configurations
+Held-out test partition: 308 observations across 22 configurations
+
+Fold 1: OLS RMSE = 4.3089 dB | Baseline RMSE = 6.4498 dB
+Fold 2: OLS RMSE = 5.6684 dB | Baseline RMSE = 7.2809 dB
+Fold 3: OLS RMSE = 4.7758 dB | Baseline RMSE = 6.8575 dB
+Fold 4: OLS RMSE = 4.5530 dB | Baseline RMSE = 6.8772 dB
+Fold 5: OLS RMSE = 5.2351 dB | Baseline RMSE = 6.9464 dB
+
+Design Matrix A_dev dimensions (m x p): (1195, 6)
+tau_A: 1.344790e-11
+Numerical column rank of A_dev: 6 (full column rank = True)
+Condition number of A_dev: 3.6827
+Feature order: ['frequency', 'angle', 'chord', 'velocity', 'displacement thickness', 'intercept']
+Fitted OLS standardized coefficients (beta_LS):
+  frequency               :    -3.9724 dB
+  angle                   :    -2.7999 dB
+  chord                   :    -3.4440 dB
+  velocity                :     1.5889 dB
+  displacement thickness  :    -1.6872 dB
+  intercept               :   124.7556 dB
+
+Shared Error Table - RMSE Comparison (dB):
+Model         Training (Dev)   Validation (CV)   Test (Held-Out)
+----------------------------------------------------------------
+Baseline              6.8545            6.8847            7.0588
+OLS                   4.8519            4.9271            4.6078
+
+Test residual summary: mean = 0.0219 dB, std = 4.6152 dB
+Mean OLS test residual (predicted - observed) by frequency band:
+      0-1000  Hz: n =  86, mean = -0.968 dB, RMSE = 5.940 dB
+   1000-3000  Hz: n = 107, mean = +0.130 dB, RMSE = 3.556 dB
+   3000-8000  Hz: n =  82, mean = +1.515 dB, RMSE = 4.099 dB
+   8000-25000 Hz: n =  33, mean = -1.461 dB, RMSE = 4.843 dB
+Mean OLS test residual by angle of attack band:
+   0-5  deg: n = 122, mean = +0.314 dB, RMSE = 4.169 dB
+   5-10 deg: n = 106, mean = +0.343 dB, RMSE = 4.527 dB
+  10-25 deg: n =  80, mean = -0.850 dB, RMSE = 5.299 dB
+Part 4: Ridge Regression
+Selected lambda: 0.01
+
+Model           Training    Validation        Test
+--------------------------------------------------
+Baseline          6.8545        6.8847      7.0588
+OLS               4.8519        4.9271      4.6078
+Ridge             4.8528        4.9256      4.6030
+
+OLS test RMSE - Ridge test RMSE: 0.0048 dB
