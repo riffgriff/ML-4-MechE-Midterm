@@ -1,3 +1,10 @@
+"""ME 8813 Midterm, Group 2: NASA Airfoil Self-Noise.
+
+Problems 1-4: SVD, PCA, ordinary least squares (OLS) and ridge regression.
+Run from the repository root:  python main.py
+Numerical results are printed to the console. Figures (PNG) and the data
+behind them (CSV) are written to figures/; the report plots use these CSV files.
+"""
 from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
@@ -19,6 +26,11 @@ def pull_dataset():
 
 
 def standardize(X):
+    # Standardize each input ROW of X (rows = variables, columns = observations):
+    # Z_ji = (X_ji - mean_j) / s_j, where s_j is the sample standard deviation (ddof=1,
+    # i.e. divide by m-1). After this step every input has mean 0 and variance 1,
+    # so inputs measured in Hz, degrees, meters and m/s become comparable.
+
     # mean-center the data
 
     X_mean = np.mean(X, axis=1, keepdims=True)
@@ -93,13 +105,17 @@ if os.path.exists(SOURCE_FILE):
     print(f"b shapes equal: {b_check.shape == b.shape}, "
           f"b match: {b_check.shape == b.shape and np.allclose(b_check, b, rtol=1e-10, atol=1e-10)}")
 else:
-    print(f"Source-data check skipped: {SOURCE_FILE} not found")
+    print("Source-data check skipped: data/airfoil_self_noise.dat not found")
 
 # Problems 1-2 use development observations only (handout p. 7 and Group 2 checklist item 5)
 dev_idx = np.array(metadata["development"], dtype=int)
 X = X_full[:, dev_idx]
 
+### PROBLEM 1: SVD OF THE INPUT DATA ###
+
 # do economy SVD
+# X = U S V^T with U (n x n), S = the n singular values (largest first) and V^T (n x m).
+# full_matrices=False gives the economy SVD (no unused columns of V).
 Z, x_mean, x_std = standardize(X)
 U_X, S_X, Vt_X = np.linalg.svd(X, full_matrices=False)
 U_Z, S_Z, Vt_Z = np.linalg.svd(Z, full_matrices=False) # technically PCA but whatever
@@ -109,6 +125,8 @@ print(f"Descriptive SVD/PCA on development data: X is {n} x {m} (n x m)")
 print(f"m: {m}, n: {n}")
 
 # find singularity cutoff, rank, and condition number
+# (handout p. 8: singular values at or below tau = eps * max(m, n) * sigma_1 count as zero;
+#  condition number = largest / smallest nonzero singular value)
 eps_mach = np.finfo(float).eps # machine tolerance for numpy operations
 tau_X = eps_mach*max([m,n])*S_X[0]
 tau_Z = eps_mach*max([m,n])*S_Z[0]
@@ -128,7 +146,9 @@ print("First left singular vector of X (u_1): " +
 
 # Engineering question 1: smallest-singular-value direction of Z (handout p. 8 and p. 11 hint)
 # u_n^T z_i = sum_j u_jn (X_ji - mu_j)/s_j ; since u_n^T Z = sigma_n v_n^T,
-# its sample standard deviation over observations is sigma_n / sqrt(m-1)
+# its sample standard deviation over observations is sigma_n / sqrt(m-1).
+# A small value means this weighted sum of standardized inputs hardly varies.
+# (The overall sign of a singular vector is arbitrary.)
 u_n = U_Z[:, -1]
 weak_sum = u_n @ Z
 print(f"\nSmallest singular value of Z: sigma_n = {S_Z[-1]:.4f}")
@@ -141,9 +161,41 @@ corr = (Z @ Z.T) / (m - 1)
 print("Correlation matrix R of the development inputs:")
 print(np.array2string(corr, precision=3, suppress_small=True))
 
+# Figure for the report (Fig. 1): singular values relative to sigma_1 and components of u_n.
+# The CSV file stores exactly the numbers that are plotted.
+np.savetxt(os.path.join(FIG_DIR, "singular_values.csv"),
+           np.column_stack((np.arange(1, n + 1), S_X, S_Z, S_X / S_X[0], S_Z / S_Z[0], u_n)),
+           delimiter=",", header="i,sigma_X,sigma_Z,sigma_X/sigma_1,sigma_Z/sigma_1,u_n", comments="")
+plt.figure(figsize=(10, 4))
+plt.subplot(1, 2, 1)
+plt.semilogy(range(1, n + 1), S_X / S_X[0], 'o-', label=f"X (physical units), cond = {c_X:.2e}")
+plt.semilogy(range(1, n + 1), S_Z / S_Z[0], 's-', label=f"Z (standardized), cond = {c_Z:.2f}")
+plt.xticks(range(1, n + 1))
+plt.xlabel("Index i")
+plt.ylabel(r"$\sigma_i / \sigma_1$")
+plt.title("Relative singular values")
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.subplot(1, 2, 2)
+plt.bar(["frequency", "angle", "chord", "velocity", r"$\delta^*$"], u_n)
+plt.axhline(0, color='k', linewidth=0.8)
+plt.ylabel(r"Component of $u_n$")
+plt.title(rf"Smallest-singular-value direction of Z ($\sigma_n$ = {S_Z[-1]:.2f})")
+plt.grid(True, axis='y', linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.savefig(os.path.join(FIG_DIR, "svd_spectrum_and_un.png"), dpi=200)
+plt.show()
+
+
+### PROBLEM 2: PCA ###
+
 # Cumulative retained variance calculations
+# Eigenvalues of the correlation matrix R = Z Z^T/(m-1) follow from the SVD of Z:
+# lambda_j = sigma_j^2/(m-1) (derivation A in the report). Each lambda_j is the
+# variance of the inputs along principal direction j (column j of U_Z).
 eigenvalues = S_Z**2/(m - 1)
 print(f"\nEigenvalues: {eigenvalues}")
+explained_variance = 100*eigenvalues/np.sum(eigenvalues)   # % of variance of each component
 cumulative_variance = 100*np.cumsum(eigenvalues)/np.sum(eigenvalues)
 
 #Compute k=number of components needed to reach 90% energy
@@ -151,15 +203,21 @@ k = np.argmax(cumulative_variance >= 90) + 1
 print(f"\nNumber of components needed to reach 90% energy: {k}")
 
 #Cumulative variance plot
+# (Fig. 2 of the report: bars = variance of each component, line = cumulative variance)
+np.savetxt(os.path.join(FIG_DIR, "pca_variance.csv"),
+           np.column_stack((np.arange(1, n + 1), eigenvalues, explained_variance, cumulative_variance)),
+           delimiter=",", header="k,lambda,explained_percent,cumulative_percent", comments="")
 plt.figure(figsize=(8, 4))
+plt.bar(range(1, n + 1), explained_variance, color='lightsteelblue', label='Variance of component j')
 plt.plot(range(1, len(cumulative_variance) + 1), cumulative_variance, color='b',
-linewidth=2, marker='o')
+linewidth=2, marker='o', label='Cumulative retained variance')
 plt.xticks(range(1, len(cumulative_variance) + 1))
 plt.axhline(y=90, color='r', linestyle='--', label='90% Variance Threshold')
+plt.axvline(x=k, color='gray', linestyle=':', label=f'k = {k}')
 plt.title("Cumulative retained variance (development data, standardized inputs)")
 plt.xlabel("Number of Principal Components")
-plt.ylabel("Cumulative Variance Retained (%)")
-plt.legend(loc='lower right')
+plt.ylabel("Variance (%)")
+plt.legend(loc='center right')
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
 plt.savefig(os.path.join(FIG_DIR, "cumulative_variance.pdf"))
@@ -167,6 +225,9 @@ plt.savefig(os.path.join(FIG_DIR, "cumulative_variance.png"), dpi=200)
 plt.show()
 
 #Reconstruction Error Calculation
+# Keep the first k principal directions: scores Y_k = U_k^T Z (k x m) and
+# reconstruction Z_k = U_k Y_k. The relative squared error equals the fraction
+# of variance in the discarded components (sum of the discarded eigenvalues).
 U_k= U_Z[:, :k]
 Y_k = U_k.T @ Z
 Z_k = U_k @ Y_k
@@ -181,6 +242,7 @@ print(f"Direct check ||Z - Z_k||_F^2 / ||Z||_F^2: {direct_error:.6f}")
 
 def calc_rmse(b_true, b_pred):
     # compute root mean squared error (Eq. 2)
+    # RMSE = sqrt( mean( (predicted - measured)^2 ) ), in dB like the response
     return np.sqrt(np.mean((b_pred - b_true)**2))
 
 
@@ -236,6 +298,8 @@ for fold_num, fold in enumerate(metadata["folds"], start=1):
     A_train_fold, A_val_fold, _, _ = build_design_matrix(X_train_fold, X_val_fold)
 
     # compute OLS coefficients via Moore-Penrose pseudoinverse with prescribed tolerance
+    # beta = A^+ b minimizes ||A beta - b||^2. numpy's rcond is relative to the largest
+    # singular value, so the cutoff equals the handout tolerance eps * max(m, p) * sigma_1.
     rcond_fold = eps_mach * max(A_train_fold.shape)
     beta_fold = np.linalg.pinv(A_train_fold, rcond=rcond_fold) @ b_train_fold
 
@@ -251,6 +315,8 @@ for fold_num, fold in enumerate(metadata["folds"], start=1):
     print(f"Fold {fold_num}: OLS RMSE = {calc_rmse(b_val_fold, b_hat_val_ols):.4f} dB | "
           f"Baseline RMSE = {calc_rmse(b_val_fold, b_hat_val_base):.4f} dB")
 
+# pooled CV RMSE: total squared error over ALL validation observations, then one square root
+# (not the average of the five fold RMSEs)
 ols_cv_rmse = np.sqrt(ols_val_sse / val_obs_count)
 base_cv_rmse = np.sqrt(base_val_sse / val_obs_count)
 
@@ -338,13 +404,21 @@ plt.show()
 # 3D. Residual trends with frequency and angle of attack (supports the Group 2 closing statement)
 freq_test = X_full[0, test_idx]
 angle_test = X_full[1, test_idx]
+np.savetxt(os.path.join(FIG_DIR, "test_predictions.csv"),
+           np.column_stack((b_test, b_hat_test_ols, residuals_test, freq_test, angle_test)),
+           delimiter=",", fmt="%.6f",
+           header="observed_dB,predicted_ols_dB,residual_dB,frequency_Hz,angle_deg", comments="")
 print(f"\nTest residual summary: mean = {residuals_test.mean():.4f} dB, std = {residuals_test.std(ddof=1):.4f} dB")
 print("Mean OLS test residual (predicted - observed) by frequency band:")
+band_rows = []   # saved for the red steps in Fig. 4b of the report
 for lo, hi in [(0, 1000), (1000, 3000), (3000, 8000), (8000, 25000)]:
     sel = (freq_test >= lo) & (freq_test < hi)
     if sel.any():
+        band_rows.append([lo, hi, sel.sum(), residuals_test[sel].mean()])
         print(f"  {lo:>5}-{hi:<5} Hz: n = {sel.sum():>3}, mean = {residuals_test[sel].mean():+.3f} dB, "
               f"RMSE = {np.sqrt(np.mean(residuals_test[sel]**2)):.3f} dB")
+np.savetxt(os.path.join(FIG_DIR, "residual_bands.csv"), np.array(band_rows), delimiter=",",
+           header="f_low_Hz,f_high_Hz,n_obs,mean_residual_dB", comments="")
 print("Mean OLS test residual by angle of attack band:")
 for lo, hi in [(0, 5), (5, 10), (10, 25)]:
     sel = (angle_test >= lo) & (angle_test < hi)
@@ -383,22 +457,28 @@ def fit_ridge(A, b, lam):
     m, p = A.shape
 
     if lam == 0:    # Calculates the case for lambda = 0 so it's basically Ordinary Least Squares (OLS)
+        # same pseudoinverse and tolerance as the OLS code in Problem 3
         rcond = np.finfo(float).eps * max(A.shape)
         return np.linalg.pinv(A, rcond=rcond) @ b
 
     gamma = np.eye(p)   #Id matrix
     gamma[-1, -1] = 0   # Removes bottom right "1", this way the intercept isn't penalized
 
+    # Normal equation of (1/m)||b - A beta||^2 + lam ||Gamma beta||^2, with m = number of
+    # rows of A (training observations): (A^T A + m lam Gamma^T Gamma) beta = A^T b
     M = A.T @ A + m * lam * (gamma.T @ gamma) #solves the linear system M*beta=A^t*b
     return np.linalg.solve(M, A.T @ b)
 
 
 # 4A. Select lambda using grouped cross-validation
+# Every candidate is scored with the same five development folds and the same pooled RMSE
+# as in Problem 3. The held-out test set is NOT used to choose lambda.
 
 lambdas = np.concatenate(([0.0], np.logspace(-6, 6, 49))) #Test 50 values of lambda, logspace to cover larger span of lambda without too many values
 
 best_lambda = None
 best_cv_rmse = np.inf
+cv_rmse_values = []   # pooled CV RMSE of every candidate (for the validation curve, Fig. 4a)
 
 for lam in lambdas:
     total_sse = 0.0
@@ -413,7 +493,7 @@ for lam in lambdas:
         b_train = b_flat[train_idx]
         b_val = b_flat[val_idx]
 
-        # encoded: all encoded input features in the development dataset.
+        # encoded: all encoded input features (all 1503 rows; train_idx/val_idx select development rows).
         # b_flat: corresponding measured sound pressure levels.
         # train_idx: indices of training observations.
         # val_idx: indices of validation observations.
@@ -435,6 +515,7 @@ for lam in lambdas:
         total_count += len(b_val)
 
     cv_rmse = np.sqrt(total_sse / total_count)
+    cv_rmse_values.append(cv_rmse)
 
     # Calculates Root Mean Square
 
@@ -444,21 +525,64 @@ for lam in lambdas:
 
     # If error from new lambda lower than previous highscorer lambda -> new lambda selected
 
+# Validation curve: pooled grouped-CV RMSE versus lambda (lambda = 0 is drawn as the OLS line)
+cv_rmse_values = np.array(cv_rmse_values)
+np.savetxt(os.path.join(FIG_DIR, "validation_curve.csv"),
+           np.column_stack((lambdas, cv_rmse_values)), delimiter=",",
+           header="lambda,pooled_cv_rmse_dB", comments="")
+plt.figure(figsize=(8, 4))
+plt.semilogx(lambdas[1:], cv_rmse_values[1:], 'o-', markersize=4, label=r'Ridge, $\lambda > 0$')
+plt.axhline(cv_rmse_values[0], color='g', linestyle='--', label=r'OLS ($\lambda$ = 0)')
+plt.axhline(base_cv_rmse, color='gray', linestyle=':', label='Baseline (training mean)')
+plt.plot(best_lambda, best_cv_rmse, 'r*', markersize=14, label=rf'Selected $\lambda$ = {best_lambda:.3g}')
+plt.xlabel(r"$\lambda$ (log scale)")
+plt.ylabel("Pooled grouped-CV RMSE (dB)")
+plt.title("Ridge validation curve")
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.savefig(os.path.join(FIG_DIR, "ridge_validation_curve.png"), dpi=200)
+plt.show()
+
 # 4B. Refit on all development data
 
-beta_ridge = fit_ridge(A_dev, b_dev, best_lambda) # Use whole dataset as training now that best lambda was found
+beta_ridge = fit_ridge(A_dev, b_dev, best_lambda) # Use whole development dataset as training now that best lambda was found (test set still unused)
 
 ridge_train_pred = A_dev @ beta_ridge # Run ridge reg on training sets
 ridge_test_pred = A_test @ beta_ridge # Run ridge reg on test sets
 
-ridge_train_rmse = calc_rmse(b_dev, ridge_train_pred) # Test RMSE value for training data
+ridge_train_rmse = calc_rmse(b_dev, ridge_train_pred) # RMSE value for training (development) data
 ridge_test_rmse = calc_rmse(b_test, ridge_test_pred)  # Test RMSE value for testing data
+
+# Effect of the penalty on the standardized coefficients (development fit only, Fig. 5).
+# lambda = 1 is NOT a selected model; it only illustrates stronger shrinkage.
+beta_ridge_1 = fit_ridge(A_dev, b_dev, 1.0)
+print("\nStandardized coefficients (dB): OLS | ridge (selected lambda) | ridge (lambda = 1, illustration)")
+for name, c0, c1, c2 in zip(feature_names, beta_ls, beta_ridge, beta_ridge_1):
+    print(f"  {name:<24}: {c0:>9.4f} | {c1:>9.4f} | {c2:>9.4f}")
+np.savetxt(os.path.join(FIG_DIR, "coefficients.csv"),
+           np.column_stack((beta_ls, beta_ridge, beta_ridge_1)), delimiter=",",
+           header="ols,ridge_selected,ridge_lambda_1 (rows: " + ", ".join(feature_names) + ")", comments="")
+x_pos = np.arange(len(input_names))
+plt.figure(figsize=(8, 4))
+plt.bar(x_pos - 0.27, beta_ls[:-1], width=0.27, label=r'OLS ($\lambda$ = 0)')
+plt.bar(x_pos, beta_ridge[:-1], width=0.27, label=rf'Ridge, selected $\lambda$ = {best_lambda:.3g}')
+plt.bar(x_pos + 0.27, beta_ridge_1[:-1], width=0.27, label=r'Ridge, $\lambda$ = 1 (illustration)')
+plt.xticks(x_pos, ["frequency", "angle", "chord", "velocity", r"$\delta^*$"])
+plt.axhline(0, color='k', linewidth=0.8)
+plt.ylabel("Standardized coefficient (dB)")
+plt.title("Slope coefficients fitted on the development data")
+plt.legend()
+plt.grid(True, axis='y', linestyle='--', alpha=0.6)
+plt.tight_layout()
+plt.savefig(os.path.join(FIG_DIR, "ridge_coefficients.png"), dpi=200)
+plt.show()
 
 
 # 4C. Compare with OLS and baseline
 
 print("Part 4: Ridge Regression")
-print(f"Selected lambda: {best_lambda:.6g}") # prints lambdas with six best digits
+print(f"Selected lambda: {best_lambda:.6g}") # prints lambdas with six significant digits
 
 print(f"\n{'Model':<12}{'Training':>12}{'Validation':>14}{'Test':>12}")
 print("-" * 50)
@@ -473,4 +597,5 @@ for name, train, val, test in [
 difference = ols_test_rmse - ridge_test_rmse #CALCULATES THE DIFFERENCE IN PERFORMANCE
 
 print(f"\nOLS test RMSE - Ridge test RMSE: {difference:.4f} dB")
+print(f"Pooled CV RMSE at lambda = 1e6 (largest candidate): {cv_rmse_values[-1]:.4f} dB")
 

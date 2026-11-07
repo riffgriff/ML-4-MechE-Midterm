@@ -76,6 +76,14 @@ Mean OLS test residual by angle of attack band:
    0-5  deg: n = 122, mean = +0.314 dB, RMSE = 4.169 dB
    5-10 deg: n = 106, mean = +0.343 dB, RMSE = 4.527 dB
   10-25 deg: n =  80, mean = -0.850 dB, RMSE = 5.299 dB
+
+Standardized coefficients (dB): OLS | ridge (selected lambda) | ridge (lambda = 1, illustration)
+  frequency               :   -3.9724 |   -3.9044 |   -1.5559
+  angle                   :   -2.7999 |   -2.6701 |   -0.6306
+  chord                   :   -3.4440 |   -3.3524 |   -1.0658
+  velocity                :    1.5889 |    1.5560 |    0.5814
+  displacement thickness  :   -1.6872 |   -1.7300 |   -1.0848
+  intercept               :  124.7556 |  124.7556 |  124.7556
 Part 4: Ridge Regression
 Selected lambda: 0.01
 
@@ -86,3 +94,4 @@ OLS               4.8519        4.9271      4.6078
 Ridge             4.8528        4.9256      4.6030
 
 OLS test RMSE - Ridge test RMSE: 0.0048 dB
+Pooled CV RMSE at lambda = 1e6 (largest candidate): 6.8847 dB
