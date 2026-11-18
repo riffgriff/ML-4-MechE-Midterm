@@ -3,7 +3,8 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 
-from student_support import load_project
+from midterm.student_support import load_project
+
 
 ###   helper functions   ###
 
@@ -94,3 +95,5 @@ c_Z = S_Z[0]/S_Z[r_Z-1]
 print(f"\ntau_X: {tau_X}\ntau_Z: {tau_Z}\n\n"+
       f"Rank X: {r_X}\nRank Z: {r_Z}\n\n"+
       f"Cond X: {c_X}\nCond Z: {c_Z}\n")
+
+print(U_X)
