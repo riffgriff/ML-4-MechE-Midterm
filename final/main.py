@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 from final.student_support import load_project
 
@@ -19,7 +21,7 @@ def pull_dataset():
     return load_project.load_project(2) # same data as Group 2 from the midterm
 
 
-def standardize(X):
+def standardize_training(X):
     # mean-center the data
 
     X_mean = np.mean(X, axis=1, keepdims=True)
@@ -31,6 +33,15 @@ def standardize(X):
     Z = X_mean_centered / X_std
 
     return Z, X_mean, X_std
+
+
+def standardize_testing(X, mean_training, std_training):
+    # standardize validation data by the mean/std from training
+
+    X_mean_centered = X - mean_training
+    Z = X_mean_centered / std_training
+
+    return Z
 
 
 @dataclass
@@ -49,6 +60,9 @@ class Configuration:
             return True
         else:
             return False
+
+    def __len__(self):
+        return len(self.data_indices)
 
 
 def pull_configurations(X):
@@ -73,13 +87,55 @@ def pull_configurations(X):
     return configurations
 
 
+def train_test_split(X, b, training_ratio, rand_seed=8813):
+    # randomly split data into a training set and a validation set, keeping configurations together
+    # X: (n_features, n_samples), b: (n_samples,)
+
+    rng = random.Random(rand_seed)
+
+    configs = pull_configurations(X)
+    n_train = round(training_ratio * len(configs))
+    training_config_idx = set(rng.sample(range(len(configs)), k=n_train))
+
+    train_idx, test_idx = [], []
+    for i, config in enumerate(configs):
+        if i in training_config_idx:
+            train_idx.extend(config.data_indices)
+        else:
+            test_idx.extend(config.data_indices)
+
+    X_train, X_test = X[:, train_idx], X[:, test_idx]
+    b_train, b_test = b[train_idx], b[test_idx]
+
+    return X_train, X_test, b_train, b_test
+
+
 ###   MAIN   ###
 
-# perform PCA
-X, b, encoded, metadata = pull_dataset()
-Z, x_mean, x_std = standardize(X)
-U, S, Vt = np.linalg.svd(Z, full_matrices=False) # technically PCA but whatever
-n, m = X.shape
+# split into training & testing sets
+training_ratio = 0.8
+X_full, b_full, encoded, metadata = pull_dataset()
+X_train, X_test, b_train, b_test = train_test_split(X_full, b_full, training_ratio)
+
+# standardize training data
+Z_train, X_train_mean, X_train_std = standardize_training(X_train)
+y_train, b_train_mean, b_train_std = standardize_training(b_train) # y is standardized output vector
+
+# perform PCA (necessary? not sure)
+U, S, Vt = np.linalg.svd(Z_train, full_matrices=False)
+n, m = X_train.shape
+
+# train MLP - using standardized data without PCA transformation
+
+
+
+
+
+
+
+
+### validation
+# for whoever does this, the standardize_testing function should be helpful - just use X_train_mean and X_train_std
 
 
 
