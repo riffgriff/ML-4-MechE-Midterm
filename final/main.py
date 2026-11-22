@@ -130,9 +130,9 @@ class MLP(nn.Module):
         return self.net(x) # see __init__
 
 
-def train(model, Z_train, y_train, Z_test, y_test,
-          learn_rate=1e-3, weight_decay=1e-4,
-          max_epochs=2000, patience=100, batch_size=128):
+def train_MLP(model, Z_train, y_train, Z_test, y_test,
+              learn_rate=1e-3, weight_decay=1e-4,
+              max_epochs=2000, patience=100, batch_size=128):
     # train a provided MLP model
     # returns a trained model and its corresponding loss function result against the validation data
 
@@ -206,9 +206,12 @@ y_train_torch = torch.tensor(y_train.reshape(-1, 1), dtype=torch.float32)
 Z_test_torch  = torch.tensor(Z_test.T, dtype=torch.float32)
 y_test_torch  = torch.tensor(y_test.reshape(-1, 1), dtype=torch.float32)
 
-# try out all the default vals
-first_MLP, loss = train(MLP(), Z_train_torch, y_train_torch, Z_test_torch, y_test_torch)
-print(loss)
+# try out the default vals
+hidden_layers = (32, 32)
+first_MLP = MLP(hidden=hidden_layers, activation=nn.Tanh)
+first_MLP, loss = train_MLP(first_MLP, Z_train_torch, y_train_torch, Z_test_torch, y_test_torch)
+print(f"\nLoss with default vals: {loss}")
+# things to play with - training ratio, activation function, learn rate, weight decay, batch size, patience
 
 
 
