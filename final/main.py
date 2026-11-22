@@ -211,14 +211,8 @@ hidden_layers = (32, 32)
 first_MLP = MLP(hidden=hidden_layers, activation=nn.Tanh)
 first_MLP, loss = train_MLP(first_MLP, Z_train_torch, y_train_torch, Z_test_torch, y_test_torch)
 print(f"\nLoss with default vals: {loss}")
-# things to play with - training ratio, activation function, learn rate, weight decay, batch size, patience
+# parameters to play with - training ratio, activation function, training parameters (learn rate, weight decay, batch size, patience)
 
-
-
-
-### validation
-# for whoever does this, the standardize_testing function should be helpful - just use X_train_mean and X_train_std
-# should prob use k-fold cross-validation, dataset do be small
 
 
 
