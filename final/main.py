@@ -108,7 +108,7 @@ def train_test_split(X, b, training_ratio, rand_seed=8813):
 
 ###   polynomial exploration helpers   ###
 
-eps_mach = np.finfo(float).eps # machine tolerance for numpy operations (same as midterm)
+eps_mach = np.finfo(float).eps # machine tolerance
 
 def calc_rmse(b_true, b_pred):
     # compute root mean squared error
@@ -140,18 +140,6 @@ def build_poly_design_matrix(X_train_raw, X_eval_raw, degrees):
     A_train = np.column_stack(train_cols)
     A_eval = np.column_stack(eval_cols)
     return A_train, A_eval
-
-def poly_term_names(degrees, input_names):
-    # labels for the columns built above, in the same order
-    names = []
-    for j, d in enumerate(degrees):
-        for power in range(1, d + 1):
-            if power == 1:
-                names.append(input_names[j])
-            else:
-                names.append(f"{input_names[j]}^{power}")
-    names.append("intercept")
-    return names
 
 def make_group_folds(X, n_folds=5, seed=8813):
     # grouped cross-validation: whole configurations go into a fold together
@@ -302,6 +290,67 @@ first_MLP, loss = train_MLP(first_MLP, Z_train_torch, y_train_torch, Z_test_torc
 print(f"\nLoss with default vals: {loss}")
 # parameters to play with - training ratio, activation function, training parameters (learn rate, weight decay, batch size, patience)
 
+### Polynomial Exploration (degree <= 2 per feature) ###
 
+print("\n--- Degree-2 Polynomial Exploration ---")
+
+# transpose
+X_dev_rows = X_train.T
+X_test_rows = X_test.T
+b_dev = b_train.ravel()
+b_test_flat = b_test.ravel()
+
+input_names = list(metadata.get("input_names", [
+    "frequency", "angle", "chord_length", "velocity", "displacement_thickness"
+]))
+
+folds = make_group_folds(X_train, n_folds=5, seed=random_seed)
+
+# search all 243 combinations of degrees
+results = [] # for each polynomial: (cv_rmse, degrees, number_of_terms)
+
+for d0 in [0, 1, 2]:                  # frequency
+    for d1 in [0, 1, 2]:              # angle
+        for d2 in [0, 1, 2]:          # chord length
+            for d3 in [0, 1, 2]:      # velocity
+                for d4 in [0, 1, 2]:  # displacement thickness
+                    degrees = (d0, d1, d2, d3, d4)
+                    cv_rmse = cv_rmse_poly(X_dev_rows, b_dev, degrees, folds)
+                    results.append((cv_rmse, degrees, sum(degrees)))
+
+results.sort(key=lambda r: r[0]) # sort by CV RMSE (lowest on top)
+
+print("\nTop 5 polynomial models by pooled CV RMSE:")
+for cv_rmse, degrees, n_terms in results[:5]:
+    print(f"degrees={degrees}  terms={n_terms}  CV RMSE={cv_rmse:.4f} dB")
+
+# best by CV error
+best_cv_rmse, best_degrees, _ = results[0]
+
+# parsimonious: fewest terms within 10% of the best CV MSE (based on ch3 guided exercise)
+eligible = [r for r in results if r[0]**2 <= 1.10 * best_cv_rmse**2]
+pars_cv_rmse, pars_degrees, _ = min(eligible, key=lambda r: (r[2], r[0]))
+
+print(f"\nMin-CV RMSE degrees:       {best_degrees}  (CV RMSE {best_cv_rmse:.4f} dB)")
+print(f"Parsimonious degrees: {pars_degrees}  (CV RMSE {pars_cv_rmse:.4f} dB)")
+
+# final refit on all development data and evaluation on the held-out test set
+print("\nRMSE Table (dB):")
+print(f"{'Model':<24}{'Training (Dev)':>16}{'Validation (CV)':>18}{'Test (Held-Out)':>18}")
+print("-" * 76)
+
+models_to_report = [
+    ("Best poly (min CV)", best_degrees, best_cv_rmse),
+    ("Parsimonious poly", pars_degrees, pars_cv_rmse),
+]
+for label, degrees, cv_rmse in models_to_report:
+    _, b_hat_dev_poly, b_hat_test_poly = fit_poly(degrees, X_dev_rows, b_dev, X_test_rows)
+    train_rmse = calc_rmse(b_dev, b_hat_dev_poly)
+    test_rmse = calc_rmse(b_test_flat, b_hat_test_poly)
+    print(f"{label:<24}{train_rmse:>16.4f}{cv_rmse:>18.4f}{test_rmse:>18.4f}")
+
+# design matrix and coefficients for the best CV RMSE polynomial
+beta_best, b_hat_dev_best, b_hat_test_best = fit_poly(best_degrees, X_dev_rows, b_dev, X_test_rows)
+A_dev_best, _ = build_poly_design_matrix(X_dev_rows, X_test_rows, best_degrees)
 
 
