@@ -106,6 +106,95 @@ def train_test_split(X, b, training_ratio, rand_seed=8813):
 
     return X_train, X_test, b_train, b_test
 
+###   polynomial exploration helpers   ###
+
+eps_mach = np.finfo(float).eps # machine tolerance for numpy operations (same as midterm)
+
+def calc_rmse(b_true, b_pred):
+    # compute root mean squared error
+    return np.sqrt(np.mean((b_pred - b_true)**2))
+
+def build_poly_design_matrix(X_train_raw, X_eval_raw, degrees):
+    # X_*_raw: 1503x5 matrix
+    # degrees: max degree (0, 1, or 2) for each feature
+
+    # standardize
+    mu = np.mean(X_train_raw, axis=0, keepdims=True)
+    std = np.std(X_train_raw - mu, axis=0, keepdims=True, ddof=1)
+    std[std == 0] = 1.0 # handle constant columns (no printout: this runs hundreds of times)
+
+    Z_train_T = (X_train_raw - mu) / std
+    Z_eval_T = (X_eval_raw - mu) / std
+
+    # construct non-constant columns of design matrix
+    train_cols, eval_cols = [], []
+    for j, d in enumerate(degrees):
+        for power in range(1, d + 1):
+            train_cols.append(Z_train_T[:, j] ** power)
+            eval_cols.append(Z_eval_T[:, j] ** power)
+
+    # add intercept column of ones to end of design matrix
+    train_cols.append(np.ones(X_train_raw.shape[0]))
+    eval_cols.append(np.ones(X_eval_raw.shape[0]))
+
+    A_train = np.column_stack(train_cols)
+    A_eval = np.column_stack(eval_cols)
+    return A_train, A_eval
+
+def poly_term_names(degrees, input_names):
+    # labels for the columns built above, in the same order
+    names = []
+    for j, d in enumerate(degrees):
+        for power in range(1, d + 1):
+            if power == 1:
+                names.append(input_names[j])
+            else:
+                names.append(f"{input_names[j]}^{power}")
+    names.append("intercept")
+    return names
+
+def make_group_folds(X, n_folds=5, seed=8813):
+    # grouped cross-validation: whole configurations go into a fold together
+    # X: m x 1503 matrix. returns a list of index (train_idx, val_idx) pairs
+    configs = pull_configurations(X)
+    rng = random.Random(seed)
+    order = list(range(len(configs)))
+    rng.shuffle(order)
+
+    all_idx = np.arange(X.shape[1])
+    folds = []
+    for chunk in np.array_split(order, n_folds):
+        val_idx = []
+        for c in chunk:
+            val_idx.extend(configs[c].data_indices)
+        val_idx = np.array(val_idx, dtype=int)
+        train_idx = np.setdiff1d(all_idx, val_idx) # everything not in validation
+        folds.append((train_idx, val_idx))
+    return folds
+
+def cv_rmse_poly(X_rows, b_flat, degrees, folds):
+    # pooled CV RMSE for one choice of degrees
+    val_sse = 0.0
+    val_obs_count = 0
+
+    for train_idx, val_idx in folds:
+        A_train, A_val = build_poly_design_matrix(X_rows[train_idx], X_rows[val_idx], degrees)
+
+        rcond_fold = eps_mach * max(A_train.shape)
+        beta = np.linalg.pinv(A_train, rcond=rcond_fold) @ b_flat[train_idx]
+
+        val_sse += np.sum((A_val @ beta - b_flat[val_idx])**2)
+        val_obs_count += len(val_idx)
+
+    return np.sqrt(val_sse / val_obs_count)
+
+def fit_poly(degrees, X_dev_rows, b_dev, X_eval_rows):
+    # final fit on all development data
+    # returns coefficients, dev predictions, and predictions on the eval data
+    A_dev, A_eval = build_poly_design_matrix(X_dev_rows, X_eval_rows, degrees)
+    rcond_dev = eps_mach * max(A_dev.shape)
+    beta = np.linalg.pinv(A_dev, rcond=rcond_dev) @ b_dev
+    return beta, A_dev @ beta, A_eval @ beta
 
 ###   MLP structures   ###
 
